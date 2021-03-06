@@ -1,0 +1,30 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - yum -y install jq
+  pre_build:
+    commands:
+      - PASSWORD=$(aws ecr get-login-password)
+      - REPO=$(dirname $REPOSITORY_URI)
+      - echo $PASSWORD | docker login --password-stdin --username AWS $REPO
+      - echo Logged into $REPO
+      - TAG="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
+  build:
+    commands:
+      - echo Build started on `date`
+      - docker build -t "${REPOSITORY_URI}:latest" .
+      - docker tag "${REPOSITORY_URI}:latest" "${REPOSITORY_URI}:${TAG}"
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo $CODEBUILD_SOURCE_VERSION
+      - echo $CODEBUILD_BUILD_SUCCEEDING
+      - |
+        if [ $CODEBUILD_BUILD_SUCCEEDING -eq 1 ]; then
+          echo "Pushing to ECR"
+          docker push "${REPOSITORY_URI}:latest"
+          docker push "${REPOSITORY_URI}:${TAG}"
+          printf '{"Tag":"%s","RepositoryUri":"%s"}' $TAG $REPOSITORY_URI $PROJECT_NAME $ARTIFACT_BUCKET > build.json
+        fi
+
